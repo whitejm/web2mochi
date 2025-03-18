@@ -9,6 +9,50 @@ from crawl4ai import AsyncWebCrawler
 # Load environment variables from .env file
 load_dotenv()
 
+def extract_main_content(markdown_text, text_llm_model):
+    """Extracts only the main content from the markdown, filtering out navigation, ads, etc."""
+    messages = [
+        {
+            "role": "user",
+            "content": f"""
+You are a helpful assistant that extracts only the main content from a webpage's markdown.
+
+I have a markdown representation of a webpage that includes navigation elements, ads, footer content, and other non-essential parts. 
+
+Extract ONLY the main content section that contains the actual article or information. Remove all:
+- Navigation bars
+- Sidebars
+- Advertisements
+- Footer sections
+- Cookie notifications
+- Popup elements
+- Any other non-essential page elements
+
+Keep all headings, paragraphs, lists, code blocks, and images that are part of the main content.
+
+Here is the markdown content:
+
+{markdown_text}
+
+Return only the cleaned markdown with the main content. Do not include any explanations or comments in your response.
+"""
+        }
+    ]
+    try:
+        response = litellm.completion(model=text_llm_model, messages=messages, temperature=0.0)
+        content = response.choices[0].message.content
+        
+        # Remove any <think>...</think> sections that might be present in reasoning model output
+        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+        
+        # Clean up any excessive newlines that might be left after removing sections
+        content = re.sub(r'\n{3,}', '\n\n', content)
+        
+        return content.strip()
+    except Exception as e:
+        print(f"An error occurred during main content extraction: {e}")
+        return markdown_text  # Return original if extraction fails
+
 def get_image_description(image_url, vision_llm_model):
     """Generates a brief description of an image using a vision LLM."""
     messages = [
@@ -17,7 +61,7 @@ def get_image_description(image_url, vision_llm_model):
             "content": [
                 {
                     "type": "text",
-                    "text": "Describe this image in detail, but be concise. Use 1-4 sentences on a sinlge line.",
+                    "text": "Describe this image in detail, but be concise!",
                 },
                 {
                     "type": "image_url",
@@ -185,9 +229,14 @@ async def main_async():
     # Convert relative links to absolute
     base_url = url
     markdown_content = convert_relative_to_absolute_links(markdown_content, base_url)
-
-    segments, image_urls = split_markdown_by_images(markdown_content)
-    updated_markdown = insert_image_descriptions(markdown_content, image_urls, vision_llm_model)
+    
+    # Extract only the main content
+    main_content = extract_main_content(markdown_content, text_llm_model)
+    
+    print(main_content)
+    input("enter to continue....")
+    segments, image_urls = split_markdown_by_images(main_content)
+    updated_markdown = insert_image_descriptions(main_content, image_urls, vision_llm_model)
     mochi_cards = generate_mochi_cards_from_text(updated_markdown, text_llm_model)
 
     if mochi_cards:
