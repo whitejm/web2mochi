@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+eggs/
+.eggs-info/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.txt
+*.whl
+*.manifest
+
+# PyInstaller
+build/
+dist/
+__pycache__/
+
+# Environments
+.env
+venv/
+env/
+ENV/
+.venv/
+*/.venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# OS generated files #
+.DS_Store
+Thumbs.db
