@@ -187,7 +187,7 @@ What are the main components of a typical plant cell?
 The main components of a typical plant cell are the cell wall, cell membrane, nucleus, chloroplasts, and vacuoles. ![Plant Cell Diagram](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Plant_cell_structure_svg.svg/1920px-Plant_cell_structure_svg.svg.png)
 ```
 
-Now, generate flashcards for the following content:
+Now, generate flashcards for the following content (Return only the flashcards in raw markdown, no other response): 
 
 {markdown_text}
 """
