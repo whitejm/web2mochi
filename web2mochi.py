@@ -2,6 +2,8 @@ import litellm
 import re
 import os
 import asyncio
+import logging
+import time
 from urllib.parse import urljoin, urlparse
 from dotenv import load_dotenv
 from crawl4ai import AsyncWebCrawler
@@ -9,8 +11,27 @@ from crawl4ai import AsyncWebCrawler
 # Load environment variables from .env file
 load_dotenv()
 
+# Configure logging
+# Set root logger to INFO to suppress DEBUG logs from external libraries
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Get and configure our application logger specifically
+logger = logging.getLogger('web2mochi')
+logger.setLevel(logging.DEBUG)  # Only our logger shows DEBUG
+
+# Suppress specific external loggers if needed
+litellm_logger = logging.getLogger('LiteLLM')
+litellm_logger.setLevel(logging.WARNING)  # Only show WARNING and above for LiteLLM
+
 def extract_main_content(markdown_text, text_llm_model):
     """Extracts only the main content from the markdown, filtering out navigation, ads, etc."""
+    logger.debug("Extracting main content from markdown")
+    start_time = time.time()
+    
     messages = [
         {
             "role": "user",
@@ -48,13 +69,18 @@ Return only the cleaned markdown with the main content. Do not include any expla
         # Clean up any excessive newlines that might be left after removing sections
         content = re.sub(r'\n{3,}', '\n\n', content)
         
+        elapsed_time = time.time() - start_time
+        logger.debug(f"Main content extraction completed in {elapsed_time:.2f} seconds")
+        
         return content.strip()
     except Exception as e:
-        print(f"An error occurred during main content extraction: {e}")
+        logger.error(f"An error occurred during main content extraction: {e}")
         return markdown_text  # Return original if extraction fails
 
 def get_image_description(image_url, vision_llm_model):
     """Generates a brief description of an image using a vision LLM."""
+    logger.debug(f"Getting description for image: {image_url}")
+    
     messages = [
         {
             "role": "user",
@@ -73,14 +99,15 @@ def get_image_description(image_url, vision_llm_model):
     try:
         response = litellm.completion(model=vision_llm_model, messages=messages)
         description = response.choices[0].message.content
-        print(f"{image_url} description: {description}")
+        logger.debug(f"Image description received: {description[:50]}...")  # Log first 50 chars
         return description
     except Exception as e:
-        print(f"An error occurred during image description: {e}")
+        logger.error(f"An error occurred during image description: {e}")
         return ""
 
 def convert_relative_to_absolute_links(markdown_text, base_url):
     """Converts all relative links in the markdown to absolute URLs."""
+    logger.debug(f"Converting relative links to absolute using base URL: {base_url}")
     
     # Function to convert a single link
     def replace_link(match):
@@ -110,10 +137,13 @@ def convert_relative_to_absolute_links(markdown_text, base_url):
     # Replace markdown image links ![alt](url)
     updated_text = re.sub(r'!\[(.*?)\]\((.*?)\)', replace_image_link, updated_text)
     
+    logger.debug("Relative links conversion completed")
     return updated_text
 
 def split_markdown_by_images(markdown_text):
     """Splits Markdown text into segments based on image tags and extracts image URLs."""
+    logger.debug("Splitting markdown by images and extracting URLs")
+    
     segments = []
     last_index = 0
     for match in re.finditer(r'!\[(.*?)\]\((.*?)\)', markdown_text):
@@ -123,10 +153,15 @@ def split_markdown_by_images(markdown_text):
     segments.append(markdown_text[last_index:])
 
     image_urls = [match.group(2) for match in re.finditer(r'!\[(.*?)\]\((.*?)\)', markdown_text)]
+    
+    logger.debug(f"Found {len(image_urls)} images in markdown")
     return segments, image_urls
 
 def insert_image_descriptions(markdown_text, image_urls, vision_llm_model):
     """Inserts image descriptions into the Markdown text."""
+    logger.debug("Inserting image descriptions into markdown")
+    start_time = time.time()
+    
     updated_markdown = markdown_text
     image_index = 0
     for match in re.finditer(r'!\[(.*?)\]\((.*?)\)', updated_markdown):
@@ -141,10 +176,16 @@ def insert_image_descriptions(markdown_text, image_urls, vision_llm_model):
                 + updated_markdown[end:]
             )
             image_index += 1 #increment counter
+    
+    elapsed_time = time.time() - start_time
+    logger.debug(f"Image descriptions inserted for {image_index} images in {elapsed_time:.2f} seconds")
     return updated_markdown
 
 def generate_mochi_cards_from_text(markdown_text, text_llm_model):
     """Generates Mochi cards from Markdown text (including image descriptions)."""
+    logger.info("Generating Mochi flashcards from processed text")
+    start_time = time.time()
+    
     messages = [
         {
             "role": "user",
@@ -195,35 +236,57 @@ Now, generate flashcards for the following content (Return only the flashcards i
     ]
     try:
         response = litellm.completion(model=text_llm_model, messages=messages, temperature=0.0)
-        return response.choices[0].message.content
+        cards = response.choices[0].message.content
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"Flashcard generation completed in {elapsed_time:.2f} seconds")
+        
+        # Count the number of cards generated
+        card_count = cards.count('>>>')
+        logger.info(f"Generated {card_count + 1} flashcards")
+        
+        return cards
     except Exception as e:
-        print(f"An error occurred during flashcard generation: {e}")
+        logger.error(f"An error occurred during flashcard generation: {e}")
         return None
 
 async def fetch_webpage_to_markdown(url):
     """Fetches a webpage and converts it to markdown using crawl4ai."""
+    logger.info(f"Fetching webpage: {url}")
+    start_time = time.time()
+    
     try:
         async with AsyncWebCrawler() as crawler:
             result = await crawler.arun(url=url)
+            
+            elapsed_time = time.time() - start_time
+            logger.info(f"Webpage fetched and converted to markdown in {elapsed_time:.2f} seconds")
             return result.markdown
     except Exception as e:
-        print(f"Error fetching webpage: {e}")
+        logger.error(f"Error fetching webpage: {e}")
         return None
 
 async def main_async():
     url = input("Enter the URL of the webpage: ")
+    logger.info(f"Starting web2mochi processing for URL: {url}")
+    
     vision_llm_model = "groq/llama-3.2-90b-vision-preview"
     text_llm_model = "groq/deepseek-r1-distill-llama-70b-specdec"  # Or any other suitable text-only LLM
+    
+    logger.debug(f"Using vision model: {vision_llm_model}")
+    logger.debug(f"Using text model: {text_llm_model}")
 
     # Set the API key for LiteLLM
     litellm.api_key = os.getenv("GROQ_API_KEY")
+    if not litellm.api_key:
+        logger.error("GROQ_API_KEY environment variable not set")
+        return
 
     # Fetch and convert the webpage to markdown
-    print(f"Fetching and converting webpage: {url}")
     markdown_content = await fetch_webpage_to_markdown(url)
     
     if not markdown_content:
-        print("Failed to fetch and convert webpage. Exiting.")
+        logger.error("Failed to fetch and convert webpage. Exiting.")
         return
 
     # Convert relative links to absolute
@@ -233,25 +296,37 @@ async def main_async():
     # Extract only the main content
     main_content = extract_main_content(markdown_content, text_llm_model)
     
-    print(main_content)
-    input("enter to continue....")
+    # Confirm step completion and continue
+    logger.info("Main content extracted successfully")
+    input("Press Enter to continue with image processing...")
+    
+    # Process images
     segments, image_urls = split_markdown_by_images(main_content)
     updated_markdown = insert_image_descriptions(main_content, image_urls, vision_llm_model)
+    
+    # Generate flashcards
     mochi_cards = generate_mochi_cards_from_text(updated_markdown, text_llm_model)
 
     if mochi_cards:
-        print("\nGenerated Mochi Cards:\n")
-        print(mochi_cards)
+        logger.info("Mochi cards generated successfully")
         
-        # Optionally save the cards to a file
+        # Save the cards to a file
         output_file = f"mochi_cards_{urlparse(url).netloc}.md"
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(mochi_cards)
-        print(f"\nSaved cards to {output_file}")
+        logger.info(f"Saved cards to {output_file}")
+        
+        # Display generated cards
+        logger.debug("Generated cards content:")
+        logger.debug(mochi_cards)
+    else:
+        logger.error("Failed to generate Mochi cards")
 
 def main():
     """Entry point for the program."""
+    logger.info("Starting web2mochi")
     asyncio.run(main_async())
+    logger.info("web2mochi completed")
 
 if __name__ == "__main__":
     main()
