@@ -17,7 +17,7 @@ def get_image_description(image_url, vision_llm_model):
             "content": [
                 {
                     "type": "text",
-                    "text": "Describe this image in detail, but be concise. Use 1-4 sentences.",
+                    "text": "Describe this image in detail, but be concise. Use 1-4 sentences on a sinlge line.",
                 },
                 {
                     "type": "image_url",
@@ -107,50 +107,40 @@ def generate_mochi_cards_from_text(markdown_text, text_llm_model):
             "content": f"""
 Create simple two-sided Mochi flashcards from the provided Markdown text that cover all key concepts and terms. Each card should have a question side and an answer side.
 
-The text includes image descriptions within `<image_description>` tags, immediately following Markdown image tags like `![alt text](image_url)`. 
-If an image is relavent to a question or answer include its markdown img tag.
+The text may include images. If it does, there will be a description of the image within `<image_description>` tags, immediately following Markdown image tag like `![alt text](image_url)`. 
 
-Think about the questions and answers (flashcards) carefully. The contents should be pulled from the provided markdown. But the questions and answer pairs (flashcards) should make sense without any other context given.
+If an image is relevant to a question or answer it should include its markdown img tag.
 
-Output the cards in plain text Markdown format, suitable for direct import into Mochi.
+Think about the questions and answers (flashcards) carefully. The contents should be pulled from the main section of the provided markdown. 
+
+The questions and answer pairs (flashcards) should make sense without any other context given.
+
+There should be one card per concept. Or roughly around one card per paragraph. Focous on the most important concepts in the text.
 
 **Important Formatting Rules (from Mochi Documentation):**
 
 *   Mochi cards are written in markdown
 *   Use `---` on a line by itself to separate the question and answer sides of a *single* card.
-*   Use `
+*   Use `>>>` on a line by itself to separate *different* cards.
 
->>>
-
-` on a line by itself (with blank lines before and after) to separate *different* cards.
-
-Here is a few-shot example to guide the output format:
+Here is a few-shot example to guide the output format (notice the last one shows how to include images):
 
 ```markdown
 What is the capital of France?
 ---
 Paris
-
 >>>
-
 What is the tallest mountain in the world?
 ---
 Mount Everest
-
 >>>
-
 Describe the appearance of a typical house cat.
 ---
 A typical house cat has fur, four legs, a tail, whiskers, and pointed ears. They come in a variety of colors and sizes.
-
 >>>
-
 What are the main components of a typical plant cell?
 ---
-The main components of a typical plant cell are the cell wall, cell membrane, nucleus, chloroplasts, and vacuoles.
-![Plant Cell Diagram](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Plant_cell_structure_svg.svg/1920px-Plant_cell_structure_svg.svg.png)
-
-
+The main components of a typical plant cell are the cell wall, cell membrane, nucleus, chloroplasts, and vacuoles. ![Plant Cell Diagram](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Plant_cell_structure_svg.svg/1920px-Plant_cell_structure_svg.svg.png)
 ```
 
 Now, generate flashcards for the following content:
