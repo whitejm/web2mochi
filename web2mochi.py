@@ -205,24 +205,33 @@ There should be one card per concept. Or roughly around one card per paragraph. 
 **Important Formatting Rules (from Mochi Documentation):**
 
 *   Mochi cards are written in markdown
+*   Start each card with `>>> #` followed by a blank line where `#` is the order number of the card
 *   Use `---` on a line by itself to separate the question and answer sides of a *single* card.
-*   Use `>>>` on a line by itself to separate *different* cards.
+
 
 Here is a few-shot example to guide the output format (notice the last one shows how to include images):
 
 ```markdown
+>>> 1
+
 What is the capital of France?
 ---
 Paris
->>>
+
+>>> 2
+
 What is the tallest mountain in the world?
 ---
 Mount Everest
->>>
+
+>>> 3
+
 Describe the appearance of a typical house cat.
 ---
 A typical house cat has fur, four legs, a tail, whiskers, and pointed ears. They come in a variety of colors and sizes.
->>>
+
+>>> 4
+
 What are the main components of a typical plant cell?
 ---
 The main components of a typical plant cell are the cell wall, cell membrane, nucleus, chloroplasts, and vacuoles. ![Plant Cell Diagram](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Plant_cell_structure_svg.svg/1920px-Plant_cell_structure_svg.svg.png)
