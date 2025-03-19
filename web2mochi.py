@@ -194,13 +194,16 @@ Create simple two-sided Mochi flashcards from the provided Markdown text that co
 
 The text may include images. If it does, there will be a description of the image within `<image_description>` tags, immediately following Markdown image tag like `![alt text](image_url)`. 
 
-If an image is relevant to a question or answer it should include its markdown img tag.
+IMPORTANT ABOUT IMAGES: For each image, carefully consider whether it should be included:
+1. In the QUESTION section (before `---`) (if the question is specifically about the image or requires the image to understand)
+2. In the ANSWER section (after `---`) (if the image helps explain or visualize the answer)
+3. In BOTH sections (if the image is needed for both understanding the question and seeing the answer)
 
 Think about the questions and answers (flashcards) carefully. The contents should be pulled from the main section of the provided markdown. 
 
 The questions and answer pairs (flashcards) should make sense without any other context given.
 
-There should be one card per concept. Or roughly around one card per paragraph. Focous on the most important concepts in the text.
+There should be one card per concept. Or roughly around one card per paragraph. Focus on the most important concepts in the text.
 
 **Important Formatting Rules (from Mochi Documentation):**
 
@@ -209,7 +212,7 @@ There should be one card per concept. Or roughly around one card per paragraph. 
 *   Use `---` on a line by itself to separate the question and answer sides of a *single* card.
 
 
-Here is a few-shot example to guide the output format (notice the last one shows how to include images):
+Here is a few-shot example to guide the output format (notice how images are placed appropriately):
 
 ```markdown
 >>> 1
@@ -232,9 +235,18 @@ A typical house cat has fur, four legs, a tail, whiskers, and pointed ears. They
 
 >>> 4
 
-What are the main components of a typical plant cell?
+What are the main components of a typical plant cell as shown in this diagram?
+![Plant Cell Diagram](https://example.com/plant_cell.png)
 ---
-The main components of a typical plant cell are the cell wall, cell membrane, nucleus, chloroplasts, and vacuoles. ![Plant Cell Diagram](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Plant_cell_structure_svg.svg/1920px-Plant_cell_structure_svg.svg.png)
+The main components of a typical plant cell are the cell wall, cell membrane, nucleus, chloroplasts, and vacuoles.
+![Plant Cell Diagram](https://example.com/plant_cell.png)
+
+>>> 5
+
+Identify the structure labeled 'A' in this circuit diagram:
+![Circuit Diagram](https://example.com/circuit.png)
+---
+The structure labeled 'A' is a resistor.
 ```
 
 Now, generate flashcards for the following content (Return only the flashcards in raw markdown, no other response): 
@@ -283,10 +295,12 @@ Current flashcards:
 User feedback:
 {feedback}
 
+
 Your task:
 1. Modify the flashcards based on the user's feedback
 2. Maintain the correct Mochi card format with ">>> #" numbering and "---" separators
 3. Use the original content as context to create accurate cards
+4. Ensure image placement is appropriate in question (berfore `---`) or answer (after `---`) or both
 
 Return only the complete set of corrected flashcards in raw markdown (not in a markdown code block). Do not include any explanations or comments in your response.
 """
@@ -297,6 +311,12 @@ Return only the complete set of corrected flashcards in raw markdown (not in a m
         response = litellm.completion(model=text_llm_model, messages=messages, temperature=0.0)
         corrected_cards = response.choices[0].message.content
         
+        # Remove any <think>...</think> sections that might be present in reasoning model output
+        corrected_cards = re.sub(r'<think>.*?</think>', '', corrected_cards, flags=re.DOTALL)
+        
+        # Clean up any excessive newlines that might be left after removing sections
+        corrected_cards = re.sub(r'\n{3,}', '\n\n', corrected_cards)
+        
         elapsed_time = time.time() - start_time
         logger.info(f"Flashcard corrections completed in {elapsed_time:.2f} seconds")
         
@@ -304,6 +324,83 @@ Return only the complete set of corrected flashcards in raw markdown (not in a m
     except Exception as e:
         logger.error(f"An error occurred during flashcard correction: {e}")
         return cards  # Return original cards if correction fails
+
+def parse_cards(mochi_cards):
+    """Parses the mochi cards string into individual card entries"""
+    # Clean any <think> blocks from the text
+    cleaned_cards = re.sub(r'<think>.*?</think>', '', mochi_cards, flags=re.DOTALL)
+    
+    # Find all card blocks using regex
+    # Look for patterns like ">>> 1" followed by content until the next ">>>" or end of string
+    card_blocks = re.findall(r'(>>>\s*(\d+).*?)(?=(>>>\s*\d+)|$)', cleaned_cards, re.DOTALL)
+    
+    # Process each card block
+    result = []
+    for full_match, card_num, _ in card_blocks:
+        # Clean the content and remove the leading ">>> X" header
+        content = re.sub(r'^>>>\s*\d+\s*\n', '', full_match.strip(), flags=re.DOTALL)
+        result.append((card_num.strip(), content.strip()))
+    
+    logger.debug(f"Parsed {len(result)} cards from the input")
+    
+    # Check if we parsed any cards
+    if not result:
+        logger.warning("No cards parsed! Using fallback parsing method")
+        # Fallback: split on ">>>" and manually process
+        parts = cleaned_cards.split(">>>")
+        result = []
+        for part in parts[1:]:  # Skip first empty part
+            match = re.match(r'\s*(\d+)(.*)', part, re.DOTALL)
+            if match:
+                card_num, content = match.groups()
+                result.append((card_num.strip(), content.strip()))
+    
+    return result
+
+def save_cards_to_files(cards, url):
+    """Saves individual cards to separate files in a directory structure based on the URL"""
+    # Parse the URL to create directory structure
+    parsed_url = urlparse(url)
+    
+    # Create base output directory if it doesn't exist
+    base_dir = "output"
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+    
+    # Create a path based on the URL
+    domain = parsed_url.netloc
+    path = parsed_url.path.strip('/')
+    
+    # Create the full directory path
+    dir_path = os.path.join(base_dir, domain, path)
+    
+    # Create directories if they don't exist
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+    
+    logger.info(f"Saving cards to directory: {dir_path}")
+    
+    # Parse the cards into individual entries
+    card_entries = parse_cards(cards)
+    
+    # Save each card to a separate file
+    for card_num, card_content in card_entries:
+        filename = f"card{card_num}.md"
+        file_path = os.path.join(dir_path, filename)
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(card_content)
+        
+        logger.debug(f"Saved card {card_num} to {file_path}")
+    
+    # Also save the full deck for reference
+    full_deck_path = os.path.join(dir_path, "full_deck.md")
+    with open(full_deck_path, 'w', encoding='utf-8') as f:
+        f.write(cards)
+    
+    logger.info(f"Saved {len(card_entries)} cards as individual files and full deck to {dir_path}")
+    
+    return dir_path
 
 async def fetch_webpage_to_markdown(url):
     """Fetches a webpage and converts it to markdown using crawl4ai."""
@@ -353,7 +450,6 @@ async def main_async():
     
     # Confirm step completion and continue
     logger.info("Main content extracted successfully")
-    input("Press Enter to continue with image processing...")
     
     # Process images
     segments, image_urls = split_markdown_by_images(main_content)
@@ -384,12 +480,9 @@ async def main_async():
                 logger.info("No corrections requested, finishing up")
                 corrections_complete = True
                 
-                # Only save to file at the end after user confirmation
-                output_file = f"mochi_cards_{urlparse(url).netloc}.md"
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    f.write(current_cards)
-                logger.info(f"Saved cards to {output_file}")
-                print(f"Flashcards saved to {output_file}")
+                # Save individual card files and full deck
+                output_dir = save_cards_to_files(current_cards, url)
+                print(f"Flashcards saved to directory: {output_dir}")
             else:
                 logger.info("Applying user-requested corrections")
                 current_cards = apply_flashcard_corrections(current_cards, feedback, updated_markdown, text_llm_model)
