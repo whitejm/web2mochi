@@ -259,6 +259,52 @@ Now, generate flashcards for the following content (Return only the flashcards i
         logger.error(f"An error occurred during flashcard generation: {e}")
         return None
 
+def apply_flashcard_corrections(cards, feedback, original_content, text_llm_model):
+    """Applies user-requested corrections to the generated flashcards."""
+    logger.info("Applying corrections to flashcards based on user feedback")
+    start_time = time.time()
+    
+    messages = [
+        {
+            "role": "user",
+            "content": f"""
+You are a helpful assistant that modifies Mochi flashcards based on user feedback.
+
+Original content the flashcards are based on:
+```
+{original_content}
+```
+
+Current flashcards:
+```markdown
+{cards}
+```
+
+User feedback:
+{feedback}
+
+Your task:
+1. Modify the flashcards based on the user's feedback
+2. Maintain the correct Mochi card format with ">>> #" numbering and "---" separators
+3. Use the original content as context to create accurate cards
+
+Return only the complete set of corrected flashcards in raw markdown (not in a markdown code block). Do not include any explanations or comments in your response.
+"""
+        }
+    ]
+    
+    try:
+        response = litellm.completion(model=text_llm_model, messages=messages, temperature=0.0)
+        corrected_cards = response.choices[0].message.content
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"Flashcard corrections completed in {elapsed_time:.2f} seconds")
+        
+        return corrected_cards
+    except Exception as e:
+        logger.error(f"An error occurred during flashcard correction: {e}")
+        return cards  # Return original cards if correction fails
+
 async def fetch_webpage_to_markdown(url):
     """Fetches a webpage and converts it to markdown using crawl4ai."""
     logger.info(f"Fetching webpage: {url}")
@@ -319,15 +365,35 @@ async def main_async():
     if mochi_cards:
         logger.info("Mochi cards generated successfully")
         
-        # Save the cards to a file
-        output_file = f"mochi_cards_{urlparse(url).netloc}.md"
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(mochi_cards)
-        logger.info(f"Saved cards to {output_file}")
+        # Feedback loop for corrections
+        corrections_complete = False
+        current_cards = mochi_cards
         
-        # Display generated cards
-        logger.debug("Generated cards content:")
-        logger.debug(mochi_cards)
+        while not corrections_complete:
+            # Display all cards for review
+            card_count = current_cards.count('>>>') 
+            print(f"\n--- Generated flashcards ({card_count} cards total) ---")
+            print(current_cards)
+            print("--- End of flashcards ---")
+            
+            # Ask for feedback
+            print("\nReview the flashcards above. Would you like to make any corrections?")
+            feedback = input("Enter your feedback (or just press Enter if no corrections needed): ")
+            
+            if not feedback.strip():
+                logger.info("No corrections requested, finishing up")
+                corrections_complete = True
+                
+                # Only save to file at the end after user confirmation
+                output_file = f"mochi_cards_{urlparse(url).netloc}.md"
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write(current_cards)
+                logger.info(f"Saved cards to {output_file}")
+                print(f"Flashcards saved to {output_file}")
+            else:
+                logger.info("Applying user-requested corrections")
+                current_cards = apply_flashcard_corrections(current_cards, feedback, updated_markdown, text_llm_model)
+                print("Corrections applied! Let's review again...")
     else:
         logger.error("Failed to generate Mochi cards")
 
